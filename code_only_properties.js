@@ -1,3 +1,6 @@
+// ver 0.2: add page when the reaction is the first one.
+// ver 0.1: first release
+
 function storeTokenAndIds() {
   const scriptProperties = PropertiesService.getScriptProperties()
   scriptProperties.setProperties({
@@ -26,25 +29,32 @@ function outputSheet(str, cell) {
 }
 
 function doPost(e) {
+  const reaction_type = "pushpin"
   const json = JSON.parse(e.postData.contents)
   if (json.type == "url_verification") {
     return ContentService.createTextOutput(json.challenge)
   } else {
-    if (json.token == verificationToken() && json.event.reaction == "pushpin") {
-      createNotionPageOnlyProperties(json)
+    if (json.token == verificationToken() && json.event.reaction == reaction_type) {
+      createNotionPageOnlyProperties(json, reaction_type)
     }
   }
   return ContentService.createTextOutput("Ok")
 }
 
-function createNotionPageOnlyProperties(json) {
+function count_reaction_type(message, reaction_type) {
+  return message.reactions.filter(r => r.name == reaction_type).map(r => r.count)[0]
+}
+
+function createNotionPageOnlyProperties(json, reaction_type) {
   const message = getSlackMessage(json.event.item.channel, json.event.item.ts).messages[0]
-  const userDisplayName = getUserDisplayName(json.event.item_user)
-  const channelName = getChannelName(json.event.item.channel)
-  outputSheet(userDisplayName, "A1")
-  outputSheet(channelName, "A2")
-  outputSheet(message.text, "A3")
-  createPage(createPayloadOnlyProperties(message.text, userDisplayName, channelName))
+  if (count_reaction_type(message, reaction_type) == 1) {
+    outputSheet(message.text, "A1")
+    const userDisplayName = getUserDisplayName(json.event.item_user)
+    outputSheet(userDisplayName, "A2")
+    const channelName = getChannelName(json.event.item.channel)
+    outputSheet(channelName, "A3")
+    createPage(createPayloadOnlyProperties(message.text, userDisplayName, channelName))
+  }
 }
 
 function getSlackMessage(channel, ts) {

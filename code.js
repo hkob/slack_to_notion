@@ -1,4 +1,5 @@
-// ver 0.1 first release
+// ver 0.2: add page when the reaction is the first one.
+// ver 0.1: first release
 
 function storeTokenAndIds() {
   const scriptProperties = PropertiesService.getScriptProperties()
@@ -29,28 +30,36 @@ function outputSheet(str, cell) {
 }
 
 function doPost(e) {
+  const reaction_type = "pushpin"
   const json = JSON.parse(e.postData.contents)
   if (json.type == "url_verification") {
     return ContentService.createTextOutput(json.challenge)
   } else {
-    if (json.token == verificationToken() && json.event.reaction == "pushpin") {
-      createNotionPage(json)
+    if (json.token == verificationToken() && json.event.reaction == reaction_type) {
+      createNotionPage(json, reaction_type)
     }
   }
   return ContentService.createTextOutput("Ok")
 }
 
-function createNotionPage(json) {
+function count_reaction_type(message, reaction_type) {
+  return message.reactions.filter(r => r.name == reaction_type).map(r => r.count)[0]
+}
+
+function createNotionPage(json, reaction_type) {
   const message = getSlackMessage(json.event.item.channel, json.event.item.ts).messages[0]
-  const userDisplayName = getUserDisplayName(json.event.item_user)
-  const channelName = getChannelName(json.event.item.channel)
-  const children = convertBlock(message.blocks)
-  const title = message.text.split("\n")[0]
-  outputSheet(userDisplayName, "A1")
-  outputSheet(channelName, "A2")
-  outputSheet(title, "A3")
-  outputSheet(JSON.stringify(children), "A4")
-  createPage(createPayload(title, userDisplayName, channelName, children))
+  if (count_reaction_type(message, reaction_type) == 1) {
+    const title = message.text.split("\n")[0]
+    outputSheet(title, "A1")
+    const userDisplayName = getUserDisplayName(json.event.item_user)
+    outputSheet(userDisplayName, "A2")
+    const channelName = getChannelName(json.event.item.channel)
+    outputSheet(channelName, "A3")
+    outputSheet(JSON.stringify(message.blocks), "A4")
+    const children = convertBlock(message.blocks)
+    outputSheet(JSON.stringify(children), "A5")
+    createPage(createPayload(title, userDisplayName, channelName, children))
+  }
 }
 
 function getSlackMessage(channel, ts) {
