@@ -1,26 +1,30 @@
+// ver 0.3: multiple workspace support
 // ver 0.2: add page when the reaction is the first one.
 // ver 0.1: first release
 
 function storeTokenAndIds() {
   const scriptProperties = PropertiesService.getScriptProperties()
   scriptProperties.setProperties({
+    // "VERIFICATION_TOKEN1": "BOT_USER_OAUTH_TOKEN1",
+    // "VERIFICATION_TOKEN2": "BOT_USER_OAUTH_TOKEN2",
+    // "VERIFICATION_TOKEN3": "BOT_USER_OAUTH_TOKEN3",
+    "@@@ Paste your verification token in Sec.10 @@@@": "@@@ Paste your Bot User OAuth Token in Sec. 10 @@@",
     "MY_NOTION_TOKEN": "@@@ Paste your Integration token @@@",
-    "DATABASE_ID": "@@@ Paste your database_id like as 771391e755c245b2a31290f40f187ab9 @@@",
-    "VERIFICATION_TOKEN": "@@@ Paste your verification token in Sec.10 @@@@",
-    "BOT_USER_OAUTH_TOKEN": "@@@ Paste your Bot User OAuth Token in Sec. 10 @@@"
+    "DATABASE_ID": "@@@ Paste your database_id like as 771391e755c245b2a31290f40f187ab9 @@@"
   })
   // Confirm that the above registration was successful
-  console.log("myNotionToken = " + myNotionToken())
-  console.log("databaseId = " + databaseId())
-  console.log("verificationToken = " + verificationToken())
-  console.log("Bot User OAuth Token = " + botUserOAuthToken())
+  const properties = PropertiesService.getScriptProperties().getProperties()
+  for (let key in properties) {
+    console.log(key + " = " + properties[key])
+  }
 }
 
 function testCreateNotionPage() {
   const message = "Test title\n<https://www.google.com/>"
   const userDisplayName = "test user"
   const channelName = "test channel"
-  createPage(createPayloadOnlyProperties(message, userDisplayName, channelName))
+  const teamName = "hkob-labo"
+  createPage(createPayloadOnlyProperties(message, userDisplayName, channelName, teamName))
 }
 
 function outputSheet(str, cell) {
@@ -29,52 +33,59 @@ function outputSheet(str, cell) {
 }
 
 function doPost(e) {
-  const reaction_type = "pushpin"
+  const reactionType = "pushpin"
   const json = JSON.parse(e.postData.contents)
   if (json.type == "url_verification") {
     return ContentService.createTextOutput(json.challenge)
   } else {
-    if (json.token == verificationToken() && json.event.reaction == reaction_type) {
-      createNotionPageOnlyProperties(json, reaction_type)
+    const botToken = slackBotToken(json.token)
+    if (botToken && json.event.reaction == reactionType) {
+      createNotionPageOnlyProperties(json, reactionType, botToken)
     }
   }
   return ContentService.createTextOutput("Ok")
 }
 
-function count_reaction_type(message, reaction_type) {
-  return message.reactions.filter(r => r.name == reaction_type).map(r => r.count)[0]
+function countReactionType(message, reactionType) {
+  return message.reactions.filter(r => r.name == reactionType).map(r => r.count)[0]
 }
 
-function createNotionPageOnlyProperties(json, reaction_type) {
-  const message = getSlackMessage(json.event.item.channel, json.event.item.ts).messages[0]
-  if (count_reaction_type(message, reaction_type) == 1) {
+function createNotionPageOnlyProperties(json, reactionType, botToken) {
+  const message = getSlackMessage(json.event.item.channel, json.event.item.ts, botToken).messages[0]
+  if (countReactionType(message, reactionType) == 1) {
     outputSheet(message.text, "A1")
-    const userDisplayName = getUserDisplayName(json.event.item_user)
+    const userDisplayName = getUserDisplayName(json.event.item_user, botToken)
     outputSheet(userDisplayName, "A2")
-    const channelName = getChannelName(json.event.item.channel)
+    const channelName = getChannelName(json.event.item.channel, botToken)
     outputSheet(channelName, "A3")
-    createPage(createPayloadOnlyProperties(message.text, userDisplayName, channelName))
+    const teamName = getTeamName(botToken)
+    outputSheet(teamName, "A4")
+    createPage(createPayloadOnlyProperties(message.text, userDisplayName, channelName, teamName))
   }
 }
 
-function getSlackMessage(channel, ts) {
-  return sendSlack("https://slack.com/api/conversations.replies?channel=" + channel + "&ts=" + ts + "&limit=1")
+function getSlackMessage(channel, ts, botToken) {
+  return sendSlack("https://slack.com/api/conversations.replies?channel=" + channel + "&ts=" + ts + "&limit=1", botToken)
 }
 
-function getUserDisplayName(user_id) {
-  const profile = sendSlack("https://slack.com/api/users.info?user=" + user_id).user.profile
+function getUserDisplayName(user_id, botToken) {
+  const profile = sendSlack("https://slack.com/api/users.info?user=" + user_id, botToken).user.profile
   return profile.display_name == "" ? profile.real_name : profile.display_name
 }
 
-function getChannelName(channel_id) {
-  return sendSlack("https://slack.com/api/conversations.info?channel=" + channel_id).channel.name
+function getChannelName(channel_id, botToken) {
+  return sendSlack("https://slack.com/api/conversations.info?channel=" + channel_id, botToken).channel.name
 }
 
-function sendSlack(url) {
+function getTeamName(botToken) {
+  return sendSlack("https://slack.com/api/team.info", botToken).team.name
+}
+
+function sendSlack(url, botToken) {
   const options = {
     "headers": {
       "Content-type": "application/json; charset=utf-8",
-      "Authorization": "Bearer " + botUserOAuthToken(),
+      "Authorization": "Bearer " + botToken
     }
   }
   return JSON.parse(UrlFetchApp.fetch(url, options))
@@ -97,7 +108,7 @@ function createPage(payload) {
   return sendNotion("https://api.notion.com/v1/pages", payload, "POST")
 }
 
-function createPayloadOnlyProperties(message_text, userDisplayNme, channelName) {
+function createPayloadOnlyProperties(message_text, userDisplayNme, channelName, teamName) {
   const title = message_text.split("\n")[0]
   const urls = message_text.split(/[<>]/).filter((str) => { console.log(str); return str.startsWith("http") })
   const json = {
@@ -124,6 +135,12 @@ function createPayloadOnlyProperties(message_text, userDisplayNme, channelName) 
         "type": "select",
         "select": {
           "name": channelName
+        }
+      },
+      "workspace_name": {
+        "type": "select",
+        "select": {
+          "name": teamName
         }
       },
       "whole_message": {
@@ -155,10 +172,6 @@ function databaseId() {
   return PropertiesService.getScriptProperties().getProperty("DATABASE_ID")
 }
 
-function verificationToken() {
-  return PropertiesService.getScriptProperties().getProperty("VERIFICATION_TOKEN")
-}
-
-function botUserOAuthToken() {
-  return PropertiesService.getScriptProperties().getProperty("BOT_USER_OAUTH_TOKEN")
+function slackBotToken(verificationToken) {
+  return PropertiesService.getScriptProperties().getProperty(verificationToken)
 }
