@@ -37,7 +37,7 @@ function doPost(e) {
   const json = JSON.parse(e.postData.contents)
   if (json.type == "url_verification") {
     return ContentService.createTextOutput(json.challenge)
-  } else {
+  } else if (json.type == "event_callback") {
     const botToken = slackBotToken(json.token)
     if (botToken && json.event.reaction == reactionType) {
       createNotionPageOnlyProperties(json, reactionType, botToken)

@@ -10,6 +10,7 @@ Please check the following template.
 
 ## ChangeLog
 
+- ver 0.4: check event_callback
 - ver 0.3: multiple workspace support
 - ver 0.2: add page when the reaction is the first one.
 - ver 0.1: first release
